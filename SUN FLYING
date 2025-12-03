@@ -1,0 +1,232 @@
+import pygame
+import random
+import sys
+
+def initialize_game():
+    pygame.init()
+    
+    info = pygame.display.Info()
+    w, h = info.current_w, info.current_h
+    win = pygame.display.set_mode((w, h), pygame.FULLSCREEN)
+    pygame.display.set_caption("Flying Circle")
+    
+    clock = pygame.time.Clock()
+    font = pygame.font.SysFont("arial", 32)
+    
+    return w, h, win, clock, font
+
+class Circle:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+        self.velocity = 0
+        self.gravity = 0.5
+        self.jump_strength = -8
+        self.size = 30
+        self.color = (255, 100, 100)
+        self.alive = True
+    
+    def update(self):
+        self.velocity += self.gravity
+        self.y += self.velocity
+        
+        if self.y < 0:
+            self.y = 0
+            self.velocity = 0
+        elif self.y > 760:
+            self.alive = False
+        
+        return self.alive
+    
+    def jump(self):
+        self.velocity = self.jump_strength
+    
+    def draw(self, surface):
+        pygame.draw.circle(surface, self.color, 
+                         (self.x + self.size//2, int(self.y) + self.size//2), 
+                         self.size)
+    
+    def get_rect(self):
+        return pygame.Rect(self.x, self.y, self.size, self.size)
+
+class Pipe:
+    def __init__(self, x, gap_y, width=70):
+        self.x = x
+        self.gap_y = gap_y
+        self.width = width
+        self.gap_height = 160
+        self.passed = False
+        self.color = (0, 200, 0)
+        self.shadow_color = (0, 150, 0)
+    
+    def update(self, speed):
+        self.x -= speed
+        return self.x < -100
+    
+    def check_collision(self, circle_rect):
+        top_pipe = pygame.Rect(self.x, 0, self.width, self.gap_y)
+        bottom_pipe = pygame.Rect(self.x, self.gap_y + self.gap_height, 
+                                self.width, 600)
+        
+        if circle_rect.colliderect(top_pipe) or circle_rect.colliderect(bottom_pipe):
+            return True
+        return False
+    
+    def check_score(self, circle_x):
+        if not self.passed and self.x + self.width < circle_x:
+            self.passed = True
+            return True
+        return False
+    
+    def draw(self, surface):
+        pygame.draw.rect(surface, self.shadow_color, 
+                        (self.x + 5, 0, self.width, self.gap_y))
+        pygame.draw.rect(surface, self.shadow_color, 
+                        (self.x + 5, self.gap_y + self.gap_height, 
+                         self.width, 600))
+        
+        pygame.draw.rect(surface, self.color, 
+                        (self.x, 0, self.width, self.gap_y))
+        pygame.draw.rect(surface, self.color, 
+                        (self.x, self.gap_y + self.gap_height, 
+                         self.width, 600))
+
+def draw_background(surface, width, height):
+    for i in range(height):
+        r = 100 + int(80 * (i / height))
+        g = 180
+        b = 255
+        color = (r, g, b)
+        pygame.draw.line(surface, color, (0, i), (width, i))
+
+def draw_ground(surface, width, height):
+    pygame.draw.rect(surface, (50, 200, 50), 
+                    (0, height - 40, width, 40))
+
+def draw_clouds(surface, width):
+    clouds = [
+        (100, 100, 60),
+        (400, 80, 80),
+        (700, 120, 70),
+        (250, 150, 90),
+        (550, 70, 100)
+    ]
+    
+    for x, y, size in clouds:
+        pygame.draw.ellipse(surface, (255, 255, 255), 
+                           (x, y, size, size//2))
+
+def draw_score(surface, font, score, high_score, width):
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    surface.blit(score_text, (width//2 - 50, 20))
+    
+    high_text = font.render(f"High: {high_score}", True, (255, 215, 0))
+    surface.blit(high_text, (width - 150, 20))
+
+def draw_game_over(surface, font, width, height, score):
+    overlay = pygame.Surface((width, height), pygame.SRCALPHA)
+    overlay.fill((0, 0, 0, 180))
+    surface.blit(overlay, (0, 0))
+    
+    game_over_font = pygame.font.SysFont("arial", 48)
+    game_over_text = game_over_font.render("GAME OVER", True, (255, 70, 70))
+    surface.blit(game_over_text, 
+                (width//2 - game_over_text.get_width()//2, 200))
+    
+    score_text = font.render(f"Score: {score}", True, (255, 255, 255))
+    surface.blit(score_text, 
+                (width//2 - score_text.get_width()//2, 300))
+    
+    restart_text = font.render("Press SPACE to Restart", True, (255, 255, 255))
+    surface.blit(restart_text, 
+                (width//2 - restart_text.get_width()//2, 360))
+    
+    quit_text = font.render("Press ESC to Quit", True, (255, 255, 255))
+    surface.blit(quit_text, 
+                (width//2 - quit_text.get_width()//2, 400))
+
+def start_game():
+    w, h, win, clock, font = initialize_game()
+    high_score = 0
+    running = True
+    
+    while running:
+        score = 0
+        game_active = True
+        speed = 4
+        pipe_timer = 0
+        
+        circle = Circle(80, 250)
+        pipes = []
+        pipes.append(Pipe(w, random.randint(120, 380)))
+        
+        while game_active:
+            clock.tick(60)
+            
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: 
+                    pygame.quit()
+                    sys.exit()
+                
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE or event.key == pygame.K_UP:
+                        circle.jump()
+                    elif event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
+            
+            if not circle.update():
+                game_active = False
+            
+            pipes_to_remove = []
+            for i, pipe in enumerate(pipes):
+                if pipe.update(speed):
+                    pipes_to_remove.append(i)
+                
+                if pipe.check_collision(circle.get_rect()):
+                    game_active = False
+                
+                if pipe.check_score(circle.x):
+                    score += 1
+            
+            for i in reversed(pipes_to_remove):
+                pipes.pop(i)
+            
+            pipe_timer += 1
+            if pipe_timer > 90:
+                pipes.append(Pipe(w, random.randint(120, 380)))
+                pipe_timer = 0
+            
+            draw_background(win, w, h)
+            draw_clouds(win, w)
+            
+            for pipe in pipes:
+                pipe.draw(win)
+            
+            circle.draw(win)
+            draw_ground(win, w, h)
+            draw_score(win, font, score, high_score, w)
+            pygame.display.flip()
+        
+        if score > high_score:
+            high_score = score
+        
+        draw_game_over(win, font, w, h, score)
+        pygame.display.flip()
+        
+        waiting = True
+        while waiting:
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT: 
+                    pygame.quit()
+                    sys.exit()
+                
+                if event.type == pygame.KEYDOWN:
+                    if event.key == pygame.K_SPACE:
+                        waiting = False
+                    elif event.key == pygame.K_ESCAPE:
+                        pygame.quit()
+                        sys.exit()
+
+if __name__ == "__main__":
+    start_game()
